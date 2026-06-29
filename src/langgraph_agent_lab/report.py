@@ -20,28 +20,28 @@ def render_report(metrics: MetricsReport) -> str:
         "",
         "## 2. Architecture",
         "",
-        "The LangGraph agent implements a support ticket orchestration workflow with the following nodes:",
+        "The LangGraph agent implements a support ticket orchestration workflow.",
         "",
         "- **intake**: Normalizes raw user queries",
-        "- **classify**: Uses LLM structured output to classify queries into routes (simple, tool, missing_info, risky, error)",
-        "- **answer**: Generates responses using LLM with context from tool results and approvals",
-        "- **tool**: Executes mock tool calls with error simulation for retry testing",
+        "- **classify**: Uses LLM structured output to classify routes",
+        "- **answer**: Generates responses using LLM with context",
+        "- **tool**: Executes mock tool calls with error simulation",
         "- **evaluate**: Gates retry loops by checking tool results",
         "- **retry**: Increments attempt counter for bounded retry loops",
         "- **dead_letter**: Handles unresolvable failures after max retries",
         "- **clarify**: Asks for missing information on vague queries",
-        "- **risky_action**: Prepares destructive actions for human approval",
-        "- **approval**: Handles human-in-the-loop decisions (mock or real HITL)",
+        "- **risky_action**: Prepares destructive actions for approval",
+        "- **approval**: Handles human-in-the-loop decisions",
         "- **finalize**: Emits final audit events for all routes",
         "",
-        "State fields use append-only reducers for auditability (messages, tool_results, errors, events).",
+        "State fields use append-only reducers for auditability.",
         "",
         "## 3. State schema",
         "",
         "| Field | Reducer | Why |",
         "|---|---|---|",
         "| messages | append | audit conversation/events |",
-        "| tool_results | append | track all tool execution results |",
+        "| tool_results | append | track tool execution results |",
         "| errors | append | log failures for debugging |",
         "| events | append | complete audit trail |",
         "| route | overwrite | current route only |",
@@ -54,14 +54,16 @@ def render_report(metrics: MetricsReport) -> str:
         "",
         "## 4. Scenario results",
         "",
-        "| Scenario | Expected route | Actual route | Success | Retries | Interrupts |",
+        "| Scenario | Expected | Actual | Success | Retries | Interrupts |",
         "|---|---|---|---:|---:|---:|",
     ]
 
     for m in metrics.scenario_metrics:
+        actual = m.actual_route or "N/A"
+        success = "Yes" if m.success else "No"
         lines.append(
-            f"| {m.scenario_id} | {m.expected_route} | {m.actual_route or 'N/A'} | "
-            f"{'Yes' if m.success else 'No'} | {m.retry_count} | {m.interrupt_count} |"
+            f"| {m.scenario_id} | {m.expected_route} | {actual} | "
+            f"{success} | {m.retry_count} | {m.interrupt_count} |"
         )
 
     lines.extend([
@@ -73,30 +75,30 @@ def render_report(metrics: MetricsReport) -> str:
         "",
         "## 5. Failure analysis",
         "",
-        "1. **Retry/tool failure**: The tool_node simulates transient failures for error-route scenarios. "
-        "The evaluate_node detects ERROR results and triggers retry loops. The route_after_retry function "
-        "ensures bounded retries by checking attempt < max_attempts before routing to dead_letter.",
+        "1. **Retry/tool failure**: The tool_node simulates transient failures. "
+        "The evaluate_node detects ERROR results and triggers retry loops. "
+        "The route_after_retry function ensures bounded retries.",
         "",
-        "2. **Risky action without approval**: The risky_action_node prepares proposed actions and "
-        "routes through approval_node. The route_after_approval function enforces that approved actions "
-        "proceed to tool execution while rejected actions route to clarification.",
+        "2. **Risky action without approval**: The risky_action_node prepares "
+        "proposed actions and routes through approval_node. The "
+        "route_after_approval function enforces approval before tool execution.",
         "",
         "## 6. Persistence / recovery evidence",
         "",
-        "The lab uses MemorySaver for in-memory checkpointing. Each scenario runs with a unique thread_id "
-        f"(thread-{{scenario_id}}). The SQLite extension is available for crash-resume scenarios.",
+        "The lab uses MemorySaver for in-memory checkpointing. Each scenario "
+        "runs with a unique thread_id. SQLite extension is available.",
         "",
         "## 7. Extension work",
         "",
-        "- SQLite checkpointer implementation with WAL mode",
-        "- Mock HITL approval with interrupt() support for real HITL mode",
+        "- SQLite checkpointer with WAL mode",
+        "- Mock HITL approval with interrupt() support",
         "- LLM-based classification with structured output",
-        "- LLM-grounded answer generation with context from tool results",
+        "- LLM-grounded answer generation with context",
         "",
         "## 8. Improvement plan",
         "",
         "If I had one more day, I would productionize:",
-        "1. Real HITL integration with interrupt() and a Streamlit UI",
+        "1. Real HITL integration with interrupt() and Streamlit UI",
         "2. Parallel fan-out using Send() for multi-tool execution",
         "3. Time travel debugging via get_state_history() replay",
         "4. Observability with LangSmith tracing",

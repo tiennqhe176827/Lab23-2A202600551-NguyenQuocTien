@@ -1,8 +1,4 @@
-"""Graph construction.
-
-This module is intentionally import-safe. It imports LangGraph only inside the builder so unit tests
-that check schema/metrics can run even if students are still debugging graph wiring.
-"""
+"""Graph construction."""
 
 from __future__ import annotations
 
@@ -11,7 +7,7 @@ from typing import Any
 from .state import AgentState
 
 
-def build_graph(checkpointer: Any | None = None):
+def build_graph(checkpointer: Any | None = None) -> Any:  # noqa: ANN401
     """Build and compile the LangGraph workflow."""
     from langgraph.graph import END, START, StateGraph
 
@@ -21,12 +17,12 @@ def build_graph(checkpointer: Any | None = None):
         ask_clarification_node,
         classify_node,
         dead_letter_node,
+        evaluate_node,
         finalize_node,
         intake_node,
-        risky_action_node,
         retry_or_fallback_node,
+        risky_action_node,
         tool_node,
-        evaluate_node,
     )
     from .routing import (
         route_after_approval,
@@ -72,34 +68,23 @@ def build_graph(checkpointer: Any | None = None):
     graph.add_conditional_edges(
         "evaluate",
         route_after_evaluate,
-        {
-            "answer": "answer",
-            "retry": "retry",
-        },
+        {"answer": "answer", "retry": "retry"},
     )
 
     graph.add_conditional_edges(
         "retry",
         route_after_retry,
-        {
-            "tool": "tool",
-            "dead_letter": "dead_letter",
-        },
+        {"tool": "tool", "dead_letter": "dead_letter"},
     )
 
     graph.add_edge("dead_letter", "finalize")
-
     graph.add_edge("clarify", "finalize")
-
     graph.add_edge("risky_action", "approval")
 
     graph.add_conditional_edges(
         "approval",
         route_after_approval,
-        {
-            "tool": "tool",
-            "clarify": "clarify",
-        },
+        {"tool": "tool", "clarify": "clarify"},
     )
 
     return graph.compile(checkpointer=checkpointer)

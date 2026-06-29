@@ -10,7 +10,12 @@ import typer
 import yaml
 
 from .graph import build_graph
-from .metrics import MetricsReport, metric_from_state, summarize_metrics, write_metrics
+from .metrics import (
+    MetricsReport,
+    metric_from_state,
+    summarize_metrics,
+    write_metrics,
+)
 from .persistence import build_checkpointer
 from .report import write_report
 from .scenarios import load_scenarios
@@ -27,14 +32,22 @@ def run_scenarios(
     """Run all grading scenarios and write metrics JSON."""
     cfg = yaml.safe_load(config.read_text(encoding="utf-8"))
     scenarios = load_scenarios(cfg["scenarios_path"])
-    checkpointer = build_checkpointer(cfg.get("checkpointer", "memory"), cfg.get("database_url"))
+    checkpointer = build_checkpointer(
+        cfg.get("checkpointer", "memory"), cfg.get("database_url")
+    )
     graph = build_graph(checkpointer=checkpointer)
     metrics = []
     for scenario in scenarios:
         state = initial_state(scenario)
         run_config = {"configurable": {"thread_id": state["thread_id"]}}
         final_state = graph.invoke(state, config=run_config)
-        metrics.append(metric_from_state(final_state, scenario.expected_route.value, scenario.requires_approval))
+        metrics.append(
+            metric_from_state(
+                final_state,
+                scenario.expected_route.value,
+                scenario.requires_approval,
+            )
+        )
     report = summarize_metrics(metrics)
     write_metrics(report, output)
     if cfg.get("report_path"):
@@ -43,7 +56,9 @@ def run_scenarios(
 
 
 @app.command("validate-metrics")
-def validate_metrics(metrics: Annotated[Path, typer.Option("--metrics")]) -> None:
+def validate_metrics(
+    metrics: Annotated[Path, typer.Option("--metrics")],
+) -> None:
     """Validate metrics JSON schema for grading."""
     payload = json.loads(metrics.read_text(encoding="utf-8"))
     report = MetricsReport.model_validate(payload)

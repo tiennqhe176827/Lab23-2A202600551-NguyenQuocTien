@@ -12,13 +12,13 @@ LLM REQUIREMENT:
 from __future__ import annotations
 
 import os
+
 from pydantic import BaseModel
 
 from .llm import get_llm
 from .state import AgentState, make_event
 
 
-# ─── EXAMPLE: working node (provided for reference) ──────────────────
 def intake_node(state: AgentState) -> dict:
     """Normalize raw query. This node is provided as a working example."""
     query = state.get("query", "").strip()
@@ -29,49 +29,36 @@ def intake_node(state: AgentState) -> dict:
     }
 
 
-# ─── Structured output schemas for LLM calls ────────────────────────
-
 class Classification(BaseModel):
     route: str
     risk_level: str
 
 
-# ─── TODO(student): implement ALL nodes below ────────────────────────
-
-
 def classify_node(state: AgentState) -> dict:
-    """Classify the query into a route using an LLM.
-
-    *** MUST use a real LLM call — keyword-only heuristics will lose points. ***
-    """
+    """Classify the query into a route using an LLM."""
     llm = get_llm()
     query = state.get("query", "")
-
     structured_llm = llm.with_structured_output(Classification)
 
-    classification = structured_llm.invoke(
-        f"""You are a support ticket classifier. Classify the following user query into exactly ONE of these categories:
-
-- "simple": Basic questions, FAQs, how-to guides (e.g., password reset, account info)
-- "tool": Queries requiring a tool lookup or API call (e.g., order status, data retrieval)
-- "missing_info": Vague or incomplete queries that need clarification (e.g., "fix it", "help")
-- "risky": Queries involving destructive or sensitive actions requiring approval (e.g., refund, delete, cancel)
-- "error": Queries describing errors, failures, timeouts, or system issues
-
-Also assess risk_level:
-- "high" for risky route
-- "low" for all other routes
-
-Priority guide: risky > tool > missing_info > error > simple
-
-User query: "{query}"
-"""
+    prompt = (
+        "You are a support ticket classifier. "
+        "Classify the following user query into exactly ONE category:\n"
+        '- "simple": Basic questions, FAQs, how-to guides\n'
+        '- "tool": Queries requiring a tool lookup or API call\n'
+        '- "missing_info": Vague or incomplete queries\n'
+        '- "risky": Destructive or sensitive actions requiring approval\n'
+        '- "error": Errors, failures, timeouts, or system issues\n'
+        "Priority: risky > tool > missing_info > error > simple\n"
+        f'User query: "{query}"'
     )
+    classification = structured_llm.invoke(prompt)
 
     return {
         "route": classification.route,
         "risk_level": classification.risk_level,
-        "events": [make_event("classify", "completed", f"route={classification.route}")],
+        "events": [
+            make_event("classify", "completed", f"route={classification.route}")
+        ],
     }
 
 
@@ -83,7 +70,8 @@ def tool_node(state: AgentState) -> dict:
     if route == "error" and attempt < 2:
         result = "ERROR: Transient failure occurred while processing request"
     else:
-        result = f"Tool result: Successfully processed query '{state.get('query', '')[:50]}'"
+        query = state.get("query", "")[:50]
+        result = f"Tool result: Successfully processed query '{query}'"
 
     return {
         "tool_results": [result],
@@ -103,15 +91,14 @@ def evaluate_node(state: AgentState) -> dict:
 
     return {
         "evaluation_result": evaluation,
-        "events": [make_event("evaluate", "completed", f"result={evaluation}")],
+        "events": [
+            make_event("evaluate", "completed", f"result={evaluation}")
+        ],
     }
 
 
 def answer_node(state: AgentState) -> dict:
-    """Generate a final response using an LLM.
-
-    *** MUST use a real LLM call — hardcoded strings will lose points. ***
-    """
+    """Generate a final response using an LLM."""
     llm = get_llm()
     query = state.get("query", "")
     tool_results = state.get("tool_results", [])
@@ -124,14 +111,13 @@ def answer_node(state: AgentState) -> dict:
         context_parts.append(f"Approval decision: {approval}")
     context = "\n".join(context_parts)
 
-    response = llm.invoke(
-        f"""You are a helpful support assistant. Generate a clear, helpful response based on the following context.
-
-{context}
-
-Provide a concise, professional response that directly addresses the user's query."""
+    prompt = (
+        "You are a helpful support assistant. "
+        "Generate a clear, helpful response based on the following context.\n\n"
+        f"{context}\n\n"
+        "Provide a concise, professional response."
     )
-
+    response = llm.invoke(prompt)
     answer = response.content if hasattr(response, "content") else str(response)
 
     return {
@@ -142,41 +128,63 @@ Provide a concise, professional response that directly addresses the user's quer
 
 def ask_clarification_node(state: AgentState) -> dict:
     """Ask for missing information instead of hallucinating."""
-    query = state.get("query", "")
-    question = f"I understand you need help, but I need more details. Could you please clarify what specific issue you're experiencing with: '{query[:100]}'?"
+    query = state.get("query", "")[:100]
+    question = (
+        f"I understand you need help, but I need more details. "
+        f"Could you please clarify what specific issue you're "
+        f"experiencing with: '{query}'?"
+    )
 
     return {
         "pending_question": question,
         "final_answer": question,
-        "events": [make_event("clarify", "completed", "asked for clarification")],
+        "events": [
+            make_event("clarify", "completed", "asked for clarification")
+        ],
     }
 
 
 def risky_action_node(state: AgentState) -> dict:
     """Prepare a risky action for human approval."""
-    query = state.get("query", "")
-    proposed = f"Proposed action: Process the following request that requires approval - '{query[:100]}'. This action may have irreversible effects."
+    query = state.get("query", "")[:100]
+    proposed = (
+        f"Proposed action: Process the following request that "
+        f"requires approval - '{query}'. "
+        f"This action may have irreversible effects."
+    )
 
     return {
         "proposed_action": proposed,
-        "events": [make_event("risky_action", "completed", "action prepared for approval")],
+        "events": [
+            make_event(
+                "risky_action", "completed", "action prepared for approval"
+            )
+        ],
     }
 
 
 def approval_node(state: AgentState) -> dict:
-    """Human-in-the-loop approval step.
-
-    Default: mock approval. Extension: real HITL with interrupt() if LANGGRAPH_INTERRUPT=true.
-    """
+    """Human-in-the-loop approval step."""
     if os.getenv("LANGGRAPH_INTERRUPT") == "true":
         from langgraph.types import interrupt
-        decision = interrupt({"action": state.get("proposed_action", ""), "message": "Please approve or reject this action"})
-    else:
-        decision = {"approved": True, "reviewer": "mock-reviewer", "comment": "auto-approved for testing"}
 
+        decision = interrupt({
+            "action": state.get("proposed_action", ""),
+            "message": "Please approve or reject this action",
+        })
+    else:
+        decision = {
+            "approved": True,
+            "reviewer": "mock-reviewer",
+            "comment": "auto-approved for testing",
+        }
+
+    approved = decision.get("approved", False)
     return {
         "approval": decision,
-        "events": [make_event("approval", "completed", f"approved={decision.get('approved', False)}")],
+        "events": [
+            make_event("approval", "completed", f"approved={approved}")
+        ],
     }
 
 
@@ -194,16 +202,24 @@ def retry_or_fallback_node(state: AgentState) -> dict:
 def dead_letter_node(state: AgentState) -> dict:
     """Handle unresolvable failures after max retries exceeded."""
     max_attempts = state.get("max_attempts", 3)
-    answer = f"I apologize, but I was unable to resolve your request after {max_attempts} attempts. Your issue has been escalated to a human agent who will follow up with you shortly."
+    answer = (
+        f"I apologize, but I was unable to resolve your request "
+        f"after {max_attempts} attempts. Your issue has been "
+        f"escalated to a human agent who will follow up shortly."
+    )
 
     return {
         "final_answer": answer,
-        "events": [make_event("dead_letter", "completed", f"max_attempts={max_attempts}")],
+        "events": [
+            make_event(
+                "dead_letter", "completed", f"max_attempts={max_attempts}"
+            )
+        ],
     }
 
 
 def finalize_node(state: AgentState) -> dict:
-    """Emit a final audit event. All routes must pass through here before END."""
+    """Emit a final audit event. All routes pass through here before END."""
     return {
         "events": [make_event("finalize", "completed", "workflow finished")],
     }

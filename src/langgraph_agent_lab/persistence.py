@@ -6,7 +6,9 @@ import sqlite3
 from typing import Any
 
 
-def build_checkpointer(kind: str = "memory", database_url: str | None = None) -> Any | None:
+def build_checkpointer(
+    kind: str = "memory", database_url: str | None = None
+) -> Any | None:  # noqa: ANN401
     """Return a LangGraph checkpointer."""
     if kind == "none":
         return None
@@ -28,6 +30,6 @@ def build_checkpointer(kind: str = "memory", database_url: str | None = None) ->
         return SqliteSaver(conn)
     if kind == "postgres":
         raise NotImplementedError(
-            "TODO(student): implement Postgres checkpointer (optional extension)"
+            "TODO(student): implement Postgres checkpointer"
         )
     raise ValueError(f"Unknown checkpointer kind: {kind}")
